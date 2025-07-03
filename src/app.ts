@@ -81,7 +81,7 @@ function v2extractTokens(s: string): string[] {
 
 // API: 调用本地程序
 app.post('/run-local', (req, res) => {
-  let {tokenIn, tokenOut, amount} = req.body;
+  let {tokenIn, tokenOut, amount, chainId} = req.body;
   // const args: string[] = req.body.args || [];
   const args: string[] = [
     "quote", 
@@ -92,7 +92,7 @@ app.post('/run-local', (req, res) => {
     "--minSplits", "1", 
     // "--protocols" ,"v3", 
     "--router", "alpha", 
-    "--chainId", "11155111"];
+    "--chainId", chainId];
   // 假设本地可执行程序和 app.ts 在同一目录
   const programPath = path.join('./bin/cli'); // 注意路径
   let output = "";
