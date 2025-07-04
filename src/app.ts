@@ -6,7 +6,7 @@ import { stdout } from 'process';
 import { version } from 'os';
 
 const app = express();
-const port = 3000;
+const port = 7788;
 
 app.use(cors());
 app.use(express.json());
