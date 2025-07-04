@@ -80,7 +80,7 @@ function v2extractTokens(s: string): string[] {
 }
 
 // API: 调用本地程序
-app.post('/run-local', (req, res) => {
+app.post('/quote', (req, res) => {
   let {tokenIn, tokenOut, amount, chainId} = req.body;
   // const args: string[] = req.body.args || [];
   const args: string[] = [
