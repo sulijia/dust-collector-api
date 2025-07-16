@@ -12,13 +12,19 @@
   "description": "",
   "dependencies": {
     "body-parser": "^2.2.0",
-    "cors": "^2.8.5",
-    "express": "^5.1.0"
+    "cors": "^2.8.5"
   },
   "devDependencies": {
+    "@mayanfinance/wormhole-sdk-route": "^1.19.0",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.3",
     "@types/node": "^24.0.7",
+    "@wormhole-foundation/sdk": "^2.3.0",
+    "@wormhole-foundation/sdk-connect": "^2.2.0",
+    "axios": "^1.10.0",
+    "decimal.js": "^10.5.0",
+    "dotenv": "^17.2.0",
+    "express": "^5.1.0",
     "nodemon": "^3.1.10",
     "ts-node": "^10.9.2",
     "typescript": "^5.8.3"
