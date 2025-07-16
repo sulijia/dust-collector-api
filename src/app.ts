@@ -1,9 +1,15 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import { execFile } from 'child_process';
 import path from 'path';
 import { stdout } from 'process';
 import { version } from 'os';
+import {get_coin_list_by_address} from './get_coins_by_address/get_coins_by_address';
+import { stringify } from 'querystring';
+import { get_support_tokens_local } from './get_support_tokens_LC/get_support_tokens_lc';
+import { SUPPORT_CHAINS, SUPPORT_NETWORK } from './const';
+import {get_cross_router} from './get_support_route/get_cross_route'
 
 const app = express();
 const port = 7788;
@@ -44,6 +50,132 @@ app.use(cors(corsOptions));
 //   }
 //   return result;
 // }
+
+
+app.get('/coins_by_address', async (req,res)=>{
+  let err = '';
+  const {network ,address,platforms}=req.query;
+  let str_network = network as string;
+  if(!network || !str_network)
+  {
+    err = 'param network not found';
+    console.log(`get_coins_by_address,query is ${JSON.stringify(req.query)} ,error is ${err}`);
+    res.json({status:'ok',error:err,data:null});
+    return;
+  }
+  let str_address = address as string;
+  if(!address || !str_address){
+    err = 'param address not found';
+  console.log(`get_coins_by_address,query is ${JSON.stringify(req.query)} ,error is ${err}`);
+  res.json({status:'ok',error:err,data:null});
+    return;
+  }
+  let str_platforms = platforms as string;
+  if(!platforms || !str_platforms){
+    err = 'param platforms not found';
+  console.log(`get_coins_by_address,query is ${JSON.stringify(req.query)} ,error is ${err}`);
+  res.json({status:'ok',error:err,data:null});
+    return;
+  }
+  
+  let arr_platforms:string[] = [];
+  const _platforms = (str_platforms as string).split('|');
+  if(_platforms.length === 1 && _platforms[0] === 'all'){
+    arr_platforms = ["Ethereum",'Optimism','Base','Arbitrum'];
+  }
+  arr_platforms = _platforms;
+  if(_platforms.length<1 || arr_platforms.length<1){
+    err = `The format of the parameter platforms ${str_platforms} is incorrect. Each element is separated by |`;
+    console.log(`get_coins_by_address,query is ${JSON.stringify(req.query)} ,error is ${err}`);
+    res.json({status:'ok',error:err,data:null});
+    return;
+  }
+  const response = await get_coin_list_by_address(str_network,str_address,arr_platforms);
+  err = response.error;
+  console.log(`get_coins_by_address,query is ${JSON.stringify(req.query)} ,error is ${err}`);
+  res.json({status:'ok',error:response.error,data:response.data});
+});
+
+app.get('/support_tokens',(req,res)=>{
+  let err = '';
+  const {network ,platform}=req.query;
+  let str_network = network as string;
+  const _network = str_network as SUPPORT_NETWORK;
+  if(!network || !str_network || !_network)
+  {
+    err = 'param network not found';
+    console.log(`get_support_tokens,query is ${JSON.stringify(req.query)} ,error is ${err}`);
+    res.json({status:'ok',error:err,data:null});
+    return;
+  }
+  let str_platform = platform as string;
+  const _platform = str_platform as SUPPORT_CHAINS;
+  if(!platform || !str_platform || !_platform){
+    err = 'param platform not found';
+    console.log(`get_support_tokens,query is ${JSON.stringify(req.query)} ,error is ${err}`);
+    res.json({status:'ok',error:err,data:null});
+    return;
+  }
+
+  
+
+  const tokens = get_support_tokens_local(_network,_platform);
+  err = tokens.error;
+  console.log(`get_support_tokens,query is ${JSON.stringify(req.query)} ,error is ${err}`);
+  res.json({status:'ok',data:tokens.data,error:err});
+  
+});
+
+app.get('/best_route',async (req,res)=>{
+  let err = '';
+  const {network,src_platform,dest_platform,tokenname}=req.query;
+  let str_network = network as string;
+  const _network = str_network as SUPPORT_NETWORK;
+  if(!network || !str_network || !_network)
+  {
+    err = 'param network not found';
+    console.log(`get_support_route,query is ${JSON.stringify(req.query)} ,error is ${err}`);
+    res.json({status:'ok',error:err,data:null});
+    return;
+  }
+
+  let str_src = src_platform as string;
+  const _src= str_src as SUPPORT_CHAINS;
+  if(!src_platform|| !str_src || !_src)
+  {
+    err = 'param src_platform not found';
+    console.log(`get_support_route,query is ${JSON.stringify(req.query)} ,error is ${err}`);
+    res.json({status:'ok',error:err,data:null});
+    return;
+  }
+
+  let str_dest = dest_platform as string;
+  const _dest = str_dest as SUPPORT_CHAINS;
+  if(!dest_platform|| !str_dest || !_dest)
+  {
+    err = 'param dest_platform not found';
+    console.log(`get_support_route,query is ${JSON.stringify(req.query)} ,error is ${err}`);
+    res.json({status:'ok',error:err,data:null});
+    return;
+  }
+
+  let str_token = tokenname as string;
+  if(!tokenname || !str_token)
+  {
+    err = 'param tokenname not found';
+    console.log(`get_support_route,query is ${JSON.stringify(req.query)} ,error is ${err}`);
+    res.json({status:'ok',error:err,data:null});
+    return;
+  }
+
+  const response = await get_cross_router(_network,_src,_dest,str_token);
+  err = response.error;
+  console.log(`get_support_route,query is ${JSON.stringify(req.query)} ,error is ${err}`);
+  const data = {status:'ok',data:response.data,error:err};
+  const json_data = JSON.stringify(data,(_,v)=> typeof v === 'bigint'? v.toString():v);
+  res.send(json_data);
+  return;
+})
 
 function v3extractTokenAndFeeArrays(s: string): { tokens: string[], fees: string[] } {
   // 提取第一个代币
@@ -152,6 +284,9 @@ app.post('/quote', (req, res) => {
       fees: fees,
     });
   });
+
+
+  
 // v3 router 1 hop
   // let output ="[32mBest Route:[39m\n[32m[V3] 100.00% = USDC -- 0.3% [0x46880b404CD35c165EDdefF7421019F8dD25F4Ad]WETH[39m\n[32m\tRaw Quote Exact In:[39m\n[32m\t\t0.00[39m\n[32m\tGas Adjusted Quote In:[39m\n[32m\t\t0.00[39m\n\n[32mGas Used Quote Token: 0.000000[39m\n[32mGas Used USD: 32.427266[39m\n[32mCalldata: undefined[39m\n[32mValue: undefined[39m\n\n[32m  blockNumber: \"27803975\"[39m\n[32m  estimatedGasUsed: \"97000\"[39m\n[32m  gasPriceWei: \"1000133\"[39m\n[32mTotal ticks crossed: 1[39m\n";
 // v3 router 2 hop
@@ -230,6 +365,8 @@ app.post('/quote', (req, res) => {
 app.get('/health', (_, res) => {
   res.json({ status: 'ok' });
 });
+
+
 
 app.listen(port, () => {
   console.log(`服务已启动: http://localhost:${port}`);
