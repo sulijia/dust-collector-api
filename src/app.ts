@@ -10,6 +10,7 @@ import { stringify } from 'querystring';
 import { get_support_tokens_local } from './get_support_tokens_LC/get_support_tokens_lc';
 import { SUPPORT_CHAINS, SUPPORT_NETWORK } from './const';
 import {get_cross_router} from './get_support_route/get_cross_route'
+import axios from 'axios';
 
 const app = express();
 const port = 7788;
@@ -19,7 +20,7 @@ app.use(express.json());
 const corsOptions = {
     origin: '*', // 允许的源
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE', // 允许的方法
-    credentials: true, // 允许携带凭据
+    credentials: false, // 允许携带凭据
     optionsSuccessStatus: 204 // 对于某些老旧的浏览器
 };
 
@@ -232,7 +233,7 @@ app.post('/quote', (req, res) => {
     if (error) {
       console.log(stdout);
       console.log(stderr);
-      return res.status(500).json({
+      return res.json({
         success: false,
         version: "",
         tokens: [],
@@ -366,7 +367,38 @@ app.get('/health', (_, res) => {
   res.json({ status: 'ok' });
 });
 
+app.get('/price', async (req, res) => {
+  // 获取用户传入的 `ids` 和 `vs_currencies` 参数
+  const ids = req.query.ids as string; // 币种列表，例如 "bitcoin,ethereum"
+  const vs_currencies = req.query.vs_currencies as string; // 对应货币，例如 "usd,eur"
 
+  // // 检查参数是否提供，如果没有则返回错误提示
+  // if (!ids || !vs_currencies) {
+  //   return res.status(400).json({
+  //     error: "Missing required parameters. Please provide 'ids' and 'vs_currencies'.",
+  //   });
+  // }
+
+  try {
+    // 请求 CoinGecko API
+    const response = await axios.get('https://api.coingecko.com/api/v3/simple/price', {
+      params: {
+        ids,           // 用户传入的币种
+        vs_currencies, // 用户传入的货币
+      },
+    });
+
+    // 原样返回 CoinGecko API 的响应数据
+    res.json(response.data);
+  } catch (error) {
+    console.error('Error fetching data from CoinGecko API:', error);
+
+    // 返回错误响应
+    res.status(500).json({
+      error: 'Failed to fetch data from CoinGecko API.',
+    });
+  }
+});
 
 app.listen(port, () => {
   console.log(`服务已启动: http://localhost:${port}`);
