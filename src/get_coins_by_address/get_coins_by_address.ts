@@ -152,7 +152,7 @@ const get_token_data_by_token = (data: Token):TokenData|null =>{
             }
         }
         let amount = amount_int/10** decimals;
-        amount = new Decimal(amount).toDecimalPlaces(6).toNumber();
+        amount = new Decimal(amount).toNumber();
         if(amount <=0){
           return null;
         }
@@ -162,7 +162,7 @@ const get_token_data_by_token = (data: Token):TokenData|null =>{
         if (data.tokenPrices.length >0){
             price = parseFloat(data.tokenPrices[0].value);
             balance = amount*price;
-            balance = new Decimal(balance).toDecimalPlaces(6).toNumber()
+            balance = new Decimal(balance).toNumber()
         }
         const token =  {
             name:tokenname!,
