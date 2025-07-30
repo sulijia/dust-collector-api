@@ -11,6 +11,7 @@ import { get_support_tokens_local } from './get_support_tokens_LC/get_support_to
 import { SUPPORT_CHAINS, SUPPORT_NETWORK } from './const';
 import {get_cross_router} from './get_support_route/get_cross_route'
 import axios from 'axios';
+import { setJson, getJson } from "./dataService";
 
 const app = express();
 const port = 7788;
@@ -213,8 +214,16 @@ function v2extractTokens(s: string): string[] {
 }
 
 // API: 调用本地程序
-app.post('/quote', (req, res) => {
-  let {tokenIn, tokenOut, amount, chainId} = req.body;
+app.post('/quote', async(req, res) => {
+  let {tokenIn, tokenOut, amount, chainId, cache} = req.body;
+  let cacheKey = `quote:${chainId}:${tokenIn}:${tokenOut}`;
+  if(cache) {
+    const cacheData = await getJson<{ success: boolean; version: string; tokens: string[]; fees: string[] }>(cacheKey);
+    if(cacheData != null){
+      return res.json(cacheData);
+    }
+  }
+
   // const args: string[] = req.body.args || [];
   const args: string[] = [
     "quote", 
@@ -229,7 +238,7 @@ app.post('/quote', (req, res) => {
   // 假设本地可执行程序和 app.ts 在同一目录
   const programPath = path.join('./bin/cli'); // 注意路径
   let output = "";
-  execFile(programPath, args,{cwd:"../smart-order-router"}, (error, stdout, stderr) => {
+  execFile(programPath, args,{cwd:"../smart-order-router"}, async(error, stdout, stderr) => {
     if (error) {
       console.log(stdout);
       console.log(stderr);
@@ -277,16 +286,15 @@ app.post('/quote', (req, res) => {
         }
       }
     }
-
-    res.json({
+    let respJson = {
       success: success,
       version: versionStr,
       tokens: tokens,
       fees: fees,
-    });
+    }
+    await setJson(cacheKey, respJson);
+    res.json(respJson);
   });
-
-
   
 // v3 router 1 hop
   // let output ="[32mBest Route:[39m\n[32m[V3] 100.00% = USDC -- 0.3% [0x46880b404CD35c165EDdefF7421019F8dD25F4Ad]WETH[39m\n[32m\tRaw Quote Exact In:[39m\n[32m\t\t0.00[39m\n[32m\tGas Adjusted Quote In:[39m\n[32m\t\t0.00[39m\n\n[32mGas Used Quote Token: 0.000000[39m\n[32mGas Used USD: 32.427266[39m\n[32mCalldata: undefined[39m\n[32mValue: undefined[39m\n\n[32m  blockNumber: \"27803975\"[39m\n[32m  estimatedGasUsed: \"97000\"[39m\n[32m  gasPriceWei: \"1000133\"[39m\n[32mTotal ticks crossed: 1[39m\n";
