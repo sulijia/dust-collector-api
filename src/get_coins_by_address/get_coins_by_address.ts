@@ -359,6 +359,11 @@ export const get_coin_list_by_address = async (network:string,address:string,cha
     }
   }
 
+  // 过滤掉 代币余额小于0.01的代币
+  tokens = tokens.filter(item=>{
+    return new Decimal(item.balance).gt(new Decimal(0.01));
+  });
+
   return {data:tokens,error:null};
 }
 
