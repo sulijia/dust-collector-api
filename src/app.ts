@@ -13,6 +13,11 @@ import {get_cross_router} from './get_support_route/get_cross_route'
 import axios from 'axios';
 import { setJson, getJson } from "./dataService";
 
+import { UnifiedSDK, DefaultPriceOracle } from "./cashappSDKV1/bolaritySDK";
+import { CompoundSDK } from "./cashappSDKV1/bolaritySDK";
+import { PendleSDK, CHAINS } from "./cashappSDKV1/bolaritySDK";
+import { buildAaveClient } from "./cashappSDKV1/bolaritySDK";
+
 const app = express();
 const port = 7788;
 
@@ -407,6 +412,51 @@ app.get('/price', async (req, res) => {
     });
   }
 });
+
+app.get('/api/v1/balances/:address', async (req, res) => {
+  try {
+    const accountAddress = req.params.address;
+    const protocolParam = req.query.protocol?.toString();
+
+    const chainId = CHAINS.base.id;
+    
+    const compound = new CompoundSDK({ chainId, rpcUrl: process.env.RPC_URL_8453 });
+    const pendle = new PendleSDK({ chainId, rpcUrl: process.env.RPC_URL_8453 });
+    const aaveClient = buildAaveClient();
+    const unified = new UnifiedSDK({
+      chainId,
+      priceOracle: new DefaultPriceOracle(),
+      compound: { default: { sdk: compound } },
+      pendle: { default: { sdk: pendle } },
+      aave: {
+        [chainId]: {
+          client: aaveClient,
+          markets: ["0xA238Dd80C259a72e81d7e4664a9801593F98d1c5" /* ... */]
+        }
+      }
+    });
+    if (protocolParam) {
+      const result = await unified.getUserBalance({
+        chainId,
+        protocol: protocolParam,
+        accountAddress
+      });
+      res.json(result);
+      return;
+    }
+
+    const summary = await unified.getUnifiedBalanceSummary({
+      chainId,
+      accountAddress,
+      protocols: protocolParam,
+    });
+
+    res.json(summary);
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
 
 app.listen(port, () => {
   console.log(`服务已启动: http://localhost:${port}`);
