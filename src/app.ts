@@ -222,7 +222,7 @@ function v2extractTokens(s: string): string[] {
 app.post('/quote', async(req, res) => {
   let {tokenIn, tokenOut, amount, chainId, cache} = req.body;
   let cacheKey = `quote:${chainId}:${tokenIn}:${tokenOut}`;
-  if(cache) {
+  if(false) {
     const cacheData = await getJson<{ success: boolean; version: string; tokens: string[]; fees: string[] }>(cacheKey);
     if(cacheData != null){
       return res.json(cacheData);
@@ -413,7 +413,7 @@ app.get('/price', async (req, res) => {
   }
 });
 
-app.get('/api/v1/balances/:address', async (req, res) => {
+app.get('/v1/balances/:address', async (req, res) => {
   try {
     const accountAddress = req.params.address;
     const protocolParam = req.query.protocol?.toString();
