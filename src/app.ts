@@ -11,12 +11,18 @@ import { get_support_tokens_local } from './get_support_tokens_LC/get_support_to
 import { SUPPORT_CHAINS, SUPPORT_NETWORK } from './const';
 import {get_cross_router} from './get_support_route/get_cross_route'
 import axios from 'axios';
-import { setJson, getJson } from "./dataService";
+import { setJson, getJson, storeObjs, getObjs } from "./dataService";
 
-import { UnifiedSDK, DefaultPriceOracle } from "./cashappSDKV1/bolaritySDK";
+import { UnifiedSDK, DefaultPriceOracle,NetTransferArgs } from "./cashappSDKV1/bolaritySDK";
 import { CompoundSDK } from "./cashappSDKV1/bolaritySDK";
 import { PendleSDK, CHAINS } from "./cashappSDKV1/bolaritySDK";
 import { buildAaveClient } from "./cashappSDKV1/bolaritySDK";
+import { get_vault_details, VaultInfo } from "./cashappSDKV1/examples/vault-info";
+import {vaultConfig} from "./cashappSDKV1/bolaritySDK"
+import * as db from './db';
+import {
+    getAddress,
+} from 'ethers';
 
 const app = express();
 const port = 7788;
@@ -32,31 +38,6 @@ const corsOptions = {
 
 // 使用 CORS 中间件
 app.use(cors(corsOptions));
-// function v3extractTokensAndFeesWithLastZero(s: string): { token: string, fee: string }[] {
-//   // 提取第一个代币
-//   const firstTokenMatch = s.match(/=\s*([A-Za-z0-9]+)/);
-//   if (!firstTokenMatch) return [];
-//   const tokens: string[] = [firstTokenMatch[1]];
-//   const fees: string[] = [];
-
-//   // 提取所有“费率+代币”对
-//   const regex = /--\s*([\d.]+%)\s*\[[0-9a-fA-Fx]+\]([A-Za-z0-9]+)/g;
-//   let m: RegExpExecArray | null;
-//   while ((m = regex.exec(s)) !== null) {
-//     fees.push(m[1]);
-//     tokens.push(m[2]);
-//   }
-
-//   // 组装结果
-//   const result: { token: string, fee: string }[] = [];
-//   for (let i = 0; i < tokens.length; i++) {
-//     result.push({
-//       token: tokens[i],
-//       fee: i < fees.length ? fees[i] : '0'
-//     });
-//   }
-//   return result;
-// }
 
 
 app.get('/coins_by_address', async (req,res)=>{
@@ -300,80 +281,6 @@ app.post('/quote', async(req, res) => {
     await setJson(cacheKey, respJson);
     res.json(respJson);
   });
-  
-// v3 router 1 hop
-  // let output ="[32mBest Route:[39m\n[32m[V3] 100.00% = USDC -- 0.3% [0x46880b404CD35c165EDdefF7421019F8dD25F4Ad]WETH[39m\n[32m\tRaw Quote Exact In:[39m\n[32m\t\t0.00[39m\n[32m\tGas Adjusted Quote In:[39m\n[32m\t\t0.00[39m\n\n[32mGas Used Quote Token: 0.000000[39m\n[32mGas Used USD: 32.427266[39m\n[32mCalldata: undefined[39m\n[32mValue: undefined[39m\n\n[32m  blockNumber: \"27803975\"[39m\n[32m  estimatedGasUsed: \"97000\"[39m\n[32m  gasPriceWei: \"1000133\"[39m\n[32mTotal ticks crossed: 1[39m\n";
-// v3 router 2 hop
-  //   let output = `Best Route:
-// [V3] 100.00% = DAI -- 0.3% [0xb282e348e5Ca035851759F12390347B576823824]USDC -- 0.01% [0x6d15dEb415cb536B1BFC375Bb35A83A509Fa1a6f]WETH
-//         Raw Quote Exact In:
-//                 0.00
-//         Gas Adjusted Quote In:
-//                 0.00
-
-// Gas Used Quote Token: 0.000900
-// Gas Used USD: 0.066007
-// Calldata: undefined
-// Value: undefined
-
-//   blockNumber: "8675959"
-//   estimatedGasUsed: "193000"
-//   gasPriceWei: "4666336960"
-// Total ticks crossed: 3`
-// v3 router 3 hop
-// let output =`Best Route:
-// [V3] 100.00% = DAI -- 0.3% [0xb282e348e5Ca035851759F12390347B576823824]USDC -- 0.05% [0xaB9C1409490dCf0B9177dF840D96Da5653F5c5cF]WETH -- 0.3% [0x9B666c5d4E5C98c0b6f1cF4dDf1f251091831E3F]SOL
-//         Raw Quote Exact In:
-//                 0.00
-//         Gas Adjusted Quote In:
-//                 0.00
-
-// Gas Used Quote Token: 0.001311
-// Gas Used USD: 0.093500
-// Calldata: undefined
-// Value: undefined
-
-//   blockNumber: "8675939"
-//   estimatedGasUsed: "273000"
-//   gasPriceWei: "4672957473"
-// Total ticks crossed: 4
-// `;
-// let output =`Best Route:
-// [V2] 100.00% = USDC -- [0x46880b404CD35c165EDdefF7421019F8dD25F4Ad]WETH -- [0x46880b404CD35c165EDdefF7421019F8dD25F4Ad]SOL
-// `;
-//   output = output.replace(
-//     // 匹配所有ANSI转义序列
-//     // eslint-disable-next-line no-control-regex
-//     /\x1B\[[0-?]*[ -/]*[@-~]/g,
-//     ''
-//   );
-//   // 按照回车换行分割
-//   const lines = output.split(/\r?\n/);
-//   let success = false;
-//   // console.log(lines);
-//   if(lines.length > 1) {
-//     let routeFlag = lines[0];
-//     if(routeFlag.includes('Best Route:')) {
-//       let routeStr = lines[1];
-//       let match = routeStr.match(/^\[([^\]]+)\]/);
-
-//       if (match) {
-//         const version = match[1]; // V2 V3 V4 V2 + V3 + V4
-//         if(version == "V2" || version == "V3" || version == "V4" || version == "V2 + V3 + V4") {
-//           // V2 process
-//           if(version == "V2") {
-//             console.log(v2extractTokens(routeStr));
-//           } else if(version == "V3" || version == "V4") {
-//             console.log(v3extractTokenAndFeeArrays(routeStr));
-//           }
-//         }
-//       }
-
-//     }
-//   }
-//   res.json({
-//       success: success,
-//    });
 });
 
 app.get('/health', (_, res) => {
@@ -416,7 +323,6 @@ app.get('/price', async (req, res) => {
 app.get('/v1/balances/:address', async (req, res) => {
   try {
     const accountAddress = req.params.address;
-    const protocolParam = req.query.protocol?.toString();
 
     const chainId = CHAINS.base.id;
     
@@ -435,20 +341,11 @@ app.get('/v1/balances/:address', async (req, res) => {
         }
       }
     });
-    if (protocolParam) {
-      const result = await unified.getUserBalance({
-        chainId,
-        protocol: protocolParam,
-        accountAddress
-      });
-      res.json(result);
-      return;
-    }
 
     const summary = await unified.getUnifiedBalanceSummary({
       chainId,
       accountAddress,
-      protocols: protocolParam,
+      protocols: null,
     });
 
     res.json(summary);
@@ -457,6 +354,255 @@ app.get('/v1/balances/:address', async (req, res) => {
   }
 });
 
+function isValidAddress(address: string): boolean {
+  try {
+    getAddress(address);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// create new account
+app.post('/v1/user', async (req, res) => {
+  let {address} = req.body;
+  // check address valid
+  if(isValidAddress(String(address))) {
+    await db.create_user(String(address).toLowerCase());
+    res.json({
+      code:200,
+      msg:null,
+      data:null,
+    });
+  } else {
+    res.status(500).json({ error: 'invalid address' });
+  }
+});
+
+// query user
+app.get('/v1/user/list', async (req, res) => {
+  let {page, size} = req.query;
+  const users = await db.get_users(Number(page), Number(size));
+  res.json({
+    code:200,
+    msg:null,
+    data:users,
+  });
+});
+
+function parseList(value: string | undefined): string[] {
+    return (value || "")
+        .split(",")
+        .map((entry) => entry.trim())
+        .filter(Boolean);
+}
+function parseTokenOverrides(value: string | undefined) {
+    const tokens: Array<{ address: string; symbol?: string }> = [];
+    for (const entry of parseList(value)) {
+        const [symbol, address] = entry.includes(":") ? entry.split(":") : [undefined, entry];
+        if (!address) continue;
+        tokens.push({
+            address: address.trim(),
+            symbol: symbol ? symbol.trim().toUpperCase() : undefined
+        });
+    }
+    return tokens;
+}
+// Daily and Historical Reward
+app.get('/v1/vault/rewards', async (req, res) => {
+  let {user, days} = req.query;
+  const userRewards = await db.get_rewards(String(user).toLowerCase(), Number(days));
+
+  res.json(
+    userRewards,
+  );
+});
+
+function parsePercent(str: string): number | null {
+  if (str.trim().toLowerCase() === 'n/a') {
+    return null;
+  }
+
+  const num = parseFloat(str.replace('%', ''));
+  return isNaN(num) ? null : num;
+}
+
+function comparePercent(a: string, b: string): number {
+  const numA = parsePercent(a);
+  const numB = parsePercent(b);
+
+  if (numA === null && numB === null) return 0;
+  if (numA === null) return -1;
+  if (numB === null) return 1;
+
+  return numA - numB;
+}
+// // Vault Detail
+// app.get('/v1/vault/apy', async (req, res) => {
+//   let results = [];
+//   let cacheKey = `cashapp:vault_detail`;
+//   let cacheData = await getObjs(cacheKey);
+//   const apyMap = new Map<string, string>();
+//   if(cacheData != null){
+//     for(const vault of cacheData) {
+//       console.log(vault)
+//       if(apyMap.has(vault.category)) {
+//         // store apy lowest
+//         let old = apyMap.get(vault.category);
+//         if(comparePercent(vault.apy, old) < 0) {
+//           apyMap.set(vault.category, vault.apy);
+//         }
+//       } else {
+//         apyMap.set(vault.category, vault.apy);
+//       }
+//     }
+//   }
+//   apyMap.forEach((value, key) => {
+//     results.push({'category':key, 'apy':value});
+//   });
+//   res.json({
+//     code:200,
+//     msg:null,
+//     data:results,
+//   });
+// });
+
+// Vault Categories
+app.get('/v1/vault/category', async (req, res) => {
+  let cacheKey = `cashapp:vault_detail`;
+  let cacheData = await getObjs(cacheKey);
+  const apyMap = new Map<string, string>();
+  if(cacheData != null){
+    for(const vault of cacheData) {
+      console.log(vault)
+      if(apyMap.has(vault.category)) {
+        // store apy lowest
+        let old = apyMap.get(vault.category);
+        if(comparePercent(vault.apy, old) < 0) {
+          apyMap.set(vault.category, vault.apy);
+        }
+      } else {
+        apyMap.set(vault.category, vault.apy);
+      }
+    }
+  }
+
+  let categories = vaultConfig.VAULT_CATEGORY_INFO;
+  categories.forEach(category => {
+    category['apy'] = apyMap.get(category.id);
+  });
+  res.json(categories);
+});
+
+// Vault Detail
+app.get('/v1/vault/detail', async (req, res) => {
+  let {id, category} = req.query;
+  let results = [];
+  let cacheKey = `cashapp:vault_detail`;
+  let cacheData = await getObjs(cacheKey);
+  if(cacheData == null){
+    cacheData = await get_vault_details();
+    await storeObjs(cacheKey,cacheData);
+  }
+
+  for(const vault of cacheData) {
+    if(id !== undefined && String(id) !== '') {
+        if(id != vault.id) {
+            continue;
+        }
+    }
+    if(category !== undefined && String(category) !== '') {
+        if(category != vault.category) {
+            continue;
+        }
+    }
+    results.push(vault);
+  }
+  res.json(results);
+});
+
+// Admin api-Vault Detail
+app.get('/v1/admin/vault/detail', async (req, res) => {
+  let results = await get_vault_details();
+  let cacheKey = `cashapp:vault_detail`;
+  await storeObjs(cacheKey,results);
+  res.json({
+    code:200,
+    msg:null,
+    data:results,
+  });
+});
+
+// Admin api-Update user balance
+app.post('/v1/admin/user/balance', async (req, res) => {
+  // get all address
+  const all_users = await db.get_all_users_and_balance();
+  // search all user's balance,net transer
+  const chainId = CHAINS.base.id;
+    
+  const compound = new CompoundSDK({ chainId, rpcUrl: process.env.RPC_URL_8453 });
+  const pendle = new PendleSDK({ chainId, rpcUrl: process.env.RPC_URL_8453 });
+  const aaveClient = buildAaveClient();
+  const unified = new UnifiedSDK({
+    chainId,
+    priceOracle: new DefaultPriceOracle(),
+    compound: { default: { sdk: compound } },
+    pendle: { default: { sdk: pendle } },
+    aave: {
+      [chainId]: {
+        client: aaveClient,
+        markets: ["0xA238Dd80C259a72e81d7e4664a9801593F98d1c5" /* ... */]
+      }
+    },
+    rpcUrls: { [chainId]: process.env.RPC_URL_8453  },
+    transferExclusions: parseList(process.env.NET_TRANSFER_EXCLUDE)
+  });
+  const includeBreakdown = String(process.env.NET_TRANSFER_BREAKDOWN || "false").toLowerCase() === "true";
+  const now = new Date();
+
+  const todayUtcMidnightMs = Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate()
+  );
+  const yesterdayUtcMidnight = todayUtcMidnightMs - 24 * 60 * 60 * 1000;
+  const args: NetTransferArgs = {
+      chainId,
+      startTime: Math.floor(yesterdayUtcMidnight / 1000),
+      endTime: Math.floor(todayUtcMidnightMs / 1000),
+      includeBreakdown,
+      tokens: parseTokenOverrides(process.env.NET_TRANSFER_TOKENS)
+  };
+
+  for(const user of all_users) {
+    const valid = isValidAddress(user.address);
+    console.log("Fetch balance of address: " + user.address + " ,valid: " + valid);
+    if(valid) {
+      const summary = await unified.getUnifiedBalanceSummary({
+        chainId,
+        accountAddress: user.address,
+        protocols: null,
+      });
+      args.accountAddress = String(user.address);
+      const net_transfer = await unified.getNetTransfer(args);
+      const stableBalance: bigint = BigInt(summary?.totals?.stableUsd*1000000 || 0);
+      const yesterdayBalance: bigint = BigInt(user.balance);
+      const net_transfer_balance: bigint = BigInt(net_transfer?.netTransfer*1000000 || 0);
+      const reward: bigint = stableBalance - yesterdayBalance - net_transfer_balance;
+      const transer_in_balance: bigint = BigInt(net_transfer?.inboundUsd*1000000 || 0);
+      const transer_out_balance: bigint = BigInt(net_transfer?.outboundUsd*1000000 || 0);
+      console.log(reward, stableBalance, net_transfer_balance, transer_in_balance, transer_out_balance);
+      await db.create_reward_history(user.id, String(reward), String(stableBalance), String(net_transfer_balance), String(transer_in_balance),
+        String(transer_out_balance), new Date(todayUtcMidnightMs));
+    }
+  }
+
+  res.json({
+    code:200,
+    msg:null,
+    data:null,
+  });
+});
 
 app.listen(port, () => {
   console.log(`服务已启动: http://localhost:${port}`);

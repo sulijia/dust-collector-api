@@ -15,7 +15,8 @@
     "body-parser": "^2.2.0",
     "cors": "^2.8.5",
     "got": "^11.8.6",
-    "ioredis": "^5.6.1"
+    "ioredis": "^5.6.1",
+    "pg": "^8.16.3"
   },
   "devDependencies": {
     "@mayanfinance/wormhole-sdk-route": "^1.19.0",

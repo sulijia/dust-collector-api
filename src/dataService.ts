@@ -12,3 +12,17 @@ export async function getJson<T = any>(key: string): Promise<T | null> {
   }
   return null;
 }
+
+
+export async function storeObjs(key: string, data: object[]) {
+  const jsonString = JSON.stringify(data);
+  await redis.set(key, jsonString);
+}
+
+export async function getObjs<T = any>(key: string): Promise<T[] | null> {
+  const jsonString = await redis.get(key);
+  if (jsonString) {
+    return JSON.parse(jsonString) as T[];
+  }
+  return null;
+}

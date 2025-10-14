@@ -22,6 +22,7 @@ import { CompoundSDK } from './CompoundSDK';
 import { PendleSDK } from './PendleSDK';
 import { DEFAULT_RPCS, DEFAULT_TRANSFER_EXCLUSIONS } from '../config/common';
 import { PORTFOLIO_TOKENS } from '../config/portfolio';
+import axios from 'axios';
 
 const DEFAULT_STABLECOIN_SYMBOLS = new Set<string>([
     'USDC', 'USDT', 'DAI', 'USDBC', 'USDP', 'USDS', 'PAX', 'BUSD', 'TUSD',
@@ -321,6 +322,7 @@ export class UnifiedSDK {
 
         const walletUsd = wallet?.totals?.usd || 0;
         const grandTotal = depositsUsd + walletUsd;
+        const stableUsd = depositsUsd + wallet?.totals?.stableUsd || 0;
 
         if (Array.isArray(wallet?.failures)) {
             for (const entry of wallet.failures) {
@@ -335,7 +337,8 @@ export class UnifiedSDK {
             totals: {
                 usd: grandTotal,
                 depositsUsd,
-                walletUsd
+                walletUsd,
+                stableUsd
             },
             protocols: responses,
             wallet,
@@ -475,13 +478,12 @@ export class UnifiedSDK {
         }
 
         const exclusionSet = this._getTransferExclusionSet(resolvedChainId, excludeAddresses);
-        const fromBlock = await this._findBlockByTimestamp(provider, startSeconds, { preference: 'floor' });
-        const toBlock = await this._findBlockByTimestamp(provider, endSeconds, { preference: 'ceil' });
+        const fromBlock = await this._findBlockByTimestamp(resolvedChainId, startSeconds, { preference: 'floor' });
+        const toBlock = await this._findBlockByTimestamp(resolvedChainId, endSeconds, { preference: 'ceil' });
 
         if (toBlock < fromBlock) {
             throw new Error('Unable to resolve block range for requested timestamps');
         }
-
         const accountSummaries = new Map();
         for (const entry of accountInfo.ordered) {
             accountSummaries.set(entry.normalized, {
@@ -498,8 +500,9 @@ export class UnifiedSDK {
 
         for (const token of tokenConfigs) {
             const logs = await this._collectTransferLogs({
-                provider,
+                chainId: resolvedChainId,
                 tokenAddress: token.address,
+                userAddress: Array.from(accountSet)[0],
                 fromBlock,
                 toBlock,
                 maxBlockSpan: blockSpanLimit
@@ -510,7 +513,8 @@ export class UnifiedSDK {
             for (const log of logs) {
                 if (!log?.topics || log.topics.length < 3) continue;
 
-                const timestamp = await this._getBlockTimestamp(provider, log.blockNumber, blockTimestampCache);
+                // const timestamp = await this._getBlockTimestamp(provider, log.blockNumber, blockTimestampCache);
+                const timestamp = parseInt(log.timeStamp, 16);
                 if (timestamp == null || timestamp < startSeconds || timestamp >= endSeconds) {
                     continue;
                 }
@@ -687,6 +691,18 @@ export class UnifiedSDK {
         } catch (error) {
             return value.toLowerCase();
         }
+    }
+
+    _addressToTopic(address) {
+        let cleanAddress = address.toLowerCase();
+        if (cleanAddress.startsWith("0x")) {
+            cleanAddress = cleanAddress.slice(2);
+        }
+        if (cleanAddress.length !== 40) {
+            throw new Error("Invalid address length");
+        }
+        const padded = "0".repeat(24) + cleanAddress;
+        return "0x" + padded;
     }
 
     _toChecksumAddress(address) {
@@ -1011,27 +1027,50 @@ export class UnifiedSDK {
         };
     }
 
-    async _collectTransferLogs({ provider, tokenAddress, fromBlock, toBlock, maxBlockSpan = 5000 }) {
+    async _collectTransferLogs({ chainId, tokenAddress, userAddress, fromBlock, toBlock, maxBlockSpan = 5000 }) {
         if (fromBlock > toBlock) {
             return [];
         }
-
+        const address_topic = this._addressToTopic(userAddress);
         const logs = [];
         let span = Math.max(1, Math.floor(maxBlockSpan));
         let start = fromBlock;
 
-        while (start <= toBlock) {
+        while (start < toBlock) {
             const end = Math.min(start + span - 1, toBlock);
             try {
-                const chunk = await provider.getLogs({
-                    address: tokenAddress,
-                    topics: [ERC20_TRANSFER_TOPIC],
-                    fromBlock: start,
-                    toBlock: end
-                });
-                logs.push(...chunk);
-                start = end + 1;
+                // const chunk = await provider.getLogs({
+                //     address: tokenAddress,
+                //     topics: [ERC20_TRANSFER_TOPIC],
+                //     fromBlock: start,
+                //     toBlock: end
+                // });
+                let page = 1;
+                while(true) {
+                    let url = `https://api.etherscan.io/v2/api?chainid=${chainId}&module=logs&action=getLogs&fromBlock=${start}&toBlock=${end}&address=${tokenAddress}&topic0=${ERC20_TRANSFER_TOPIC}&topic1=${address_topic}&topic1_2_opr=or&topic2=${address_topic}&page=${page}&offset=1000&apikey=${process.env.API_KEY}`;
+                    const response = await axios.get(url);
+                    const data = response.data || {};
+                    if (typeof data?.result === 'object') {
+                        const chunk = data?.result;
+                        if(chunk != null) {
+                            logs.push(...chunk);
+                            if(chunk.length == 1000 ) {
+                                page += 1;
+                                continue;
+                            } else {
+                                break;
+                            }
+                        } else {
+                            console.log(data);
+                            break;
+                        }
+                    } else {
+                        break;
+                    }
+                }
+                start = end;
             } catch (error) {
+                console.log(error);
                 if (span <= 20) {
                     throw new Error(`Unable to fetch logs for ${tokenAddress} between blocks ${start}-${end}: ${error?.message || error}`);
                 }
@@ -1057,43 +1096,55 @@ export class UnifiedSDK {
         return block.timestamp;
     }
 
-    async _findBlockByTimestamp(provider, targetTimestamp, { preference = 'floor' } = {}) {
+    async _findBlockByTimestamp(chainId, targetTimestamp, { preference = 'floor' } = {}) {
         if (targetTimestamp == null) {
             throw new Error('targetTimestamp is required');
         }
 
-        const latestNumber = await provider.getBlockNumber();
-        let low = 0;
-        let high = latestNumber;
-        let floorBlock = 0;
-        let ceilBlock = latestNumber;
+        // const latestNumber = await provider.getBlockNumber();
+        // let low = 0;
+        // let high = latestNumber;
+        // let floorBlock = 0;
+        // let ceilBlock = latestNumber;
 
-        while (low <= high) {
-            const mid = Math.floor((low + high) / 2);
-            const block = await provider.getBlock(mid);
-            if (!block) {
-                break;
+        // while (low <= high) {
+        //     const mid = Math.floor((low + high) / 2);
+        //     const block = await provider.getBlock(mid);
+        //     if (!block) {
+        //         break;
+        //     }
+        //     if (block.timestamp === targetTimestamp) {
+        //         return mid;
+        //     }
+        //     if (block.timestamp < targetTimestamp) {
+        //         floorBlock = mid;
+        //         low = mid + 1;
+        //     } else {
+        //         ceilBlock = mid;
+        //         high = mid - 1;
+        //     }
+        // }
+
+        // if (preference === 'ceil') {
+        //     if (ceilBlock == null) {
+        //         return latestNumber;
+        //     }
+        //     return Math.min(Math.max(ceilBlock, floorBlock), latestNumber);
+        // }
+
+        // return Math.max(0, Math.min(floorBlock, latestNumber));
+        let latestNumber = 0;
+        try {
+            const url = `https://api.etherscan.io/v2/api?chainid=${chainId}&module=block&action=getblocknobytime&timestamp=${targetTimestamp}&closest=before&apikey=${process.env.API_KEY}`;
+            const response = await axios.get(url);
+            const data = response.data || {};
+            if (typeof data?.result === 'string') {
+                latestNumber = Number(data.result);
             }
-            if (block.timestamp === targetTimestamp) {
-                return mid;
-            }
-            if (block.timestamp < targetTimestamp) {
-                floorBlock = mid;
-                low = mid + 1;
-            } else {
-                ceilBlock = mid;
-                high = mid - 1;
-            }
+        } catch (error) {
+            console.error(`Fetch block number failed:`, (error as Error).message);
         }
-
-        if (preference === 'ceil') {
-            if (ceilBlock == null) {
-                return latestNumber;
-            }
-            return Math.min(Math.max(ceilBlock, floorBlock), latestNumber);
-        }
-
-        return Math.max(0, Math.min(floorBlock, latestNumber));
+        return latestNumber;
     }
 
     _normalizeTransferExclusions(source) {

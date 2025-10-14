@@ -212,11 +212,22 @@ function formatUsd(value: number | null | undefined) {
     return `$${value.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
 }
 
-async function main() {
-    const rows: Array<Record<string, string>> = [];
+// async function main() {
+//     const rows: Array<Record<string, string>> = await get_vault_details();
 
+//     console.table(rows);
+// }
+
+// main().catch((error) => {
+//     console.error('vault-info example failed:', error);
+//     process.exit(1);
+// });
+
+export const get_vault_details = async () : Promise<Array<Record<string, string>>> => {
+    const rows: Array<Record<string, string>> = [];
     for (const vault of VAULT_LIST) {
         const category = resolveCategory(vault);
+
         const staticInfo = {
             id: vault.id,
             category,
@@ -240,11 +251,18 @@ async function main() {
             note: vault.note || ''
         });
     }
-
     console.table(rows);
+    return rows;
 }
 
-main().catch((error) => {
-    console.error('vault-info example failed:', error);
-    process.exit(1);
-});
+export interface VaultInfo {
+    id: string,
+    category:string,
+    protocol: string,
+    chain: string,
+    market: string,
+    risk: string,
+    apy: string,
+    tvl: string,
+    note: string,
+}
