@@ -234,7 +234,7 @@ export const get_vault_details = async () : Promise<Array<Record<string, string>
             protocol: vault.protocol,
             chain: vault.chain,
             market: vault.market,
-            risk: vault.riskLevel
+            risk: vault.riskLevel,
         };
 
         let metrics: { apy: number | null; tvl: number | null } = { apy: null, tvl: null };
@@ -248,7 +248,8 @@ export const get_vault_details = async () : Promise<Array<Record<string, string>
             ...staticInfo,
             apy: formatPercent(metrics.apy),
             tvl: formatUsd(metrics.tvl),
-            note: vault.note || ''
+            note: vault.note || '',
+            icon:vault.icon || '',
         });
     }
     console.table(rows);
