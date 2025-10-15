@@ -95,7 +95,7 @@ async function main() {
         startTime,
         endTime,
         includeBreakdown,
-        tokens: parseTokenOverrides(process.env.NET_TRANSFER_TOKENS),
+        tokens: parseTokenOverrides(process.env.NET_TRANSFER_TOKENS)
     };
     const isBatch = accounts.length > 1;
 

@@ -47,6 +47,18 @@ export const get_users = async (page:number, size:number): Promise<User[]> => {
   }
 };
 
+export const get_user = async (address:string): Promise<User> => {
+  const client = await db_pool.connect();
+  try {
+    let res = await client.query('SELECT  * FROM users where address=$1', [address]);
+    return res.rows[0];
+  } catch (err) {
+    console.error('Error executing query', err);
+    throw err;
+  } finally {
+    client.release();
+  }
+};
 
 export const create_user = async (address:string) => {
   const client = await db_pool.connect();
@@ -92,8 +104,7 @@ export const get_rewards = async (address:string, days:number) : Promise<UserRew
   const client = await db_pool.connect();
   try {
     let res = await client.query('SELECT SUM(reward::numeric) AS total_amount FROM reward_history r INNER JOIN users u ON u."id"=r."user" WHERE u.address=$1', [address]);
-    const totalRewards = Number(fromMicroToDecimalString(BigInt(res.rows[0].total_amount)));
-    console.log(fromMicroToDecimalString(BigInt(res.rows[0].total_amount)));
+    const totalRewards = Number(fromMicroToDecimalString(BigInt(res.rows[0].total_amount ||0)));
     const query = `
       SELECT r.* FROM reward_history r
 INNER JOIN users u ON u."id"=r."user"
@@ -107,7 +118,7 @@ INNER JOIN users u ON u."id"=r."user"
     }
     res.rows.forEach(row => (rewards.rewards.push({
       date: Math.floor(new Date(row.date_at).getTime() / 1000),
-      daily_reward: Number(fromMicroToDecimalString(BigInt(row.reward))),
+      daily_reward: Number(fromMicroToDecimalString(BigInt(row.reward||0))),
     })));
     return rewards;
   } catch (err) {

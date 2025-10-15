@@ -6,12 +6,15 @@
  *
  * Example usage:
  *   import { VAULTS } from './vaults';
- *   const vault = VAULTS.flexi.find(v => v.id === 'cashapp-compound-usdc-base');
+ *   const vault = VAULTS.flexi.find(v => v.id === 'Compound-USDC-Base');
  *   if (vault?.protocol === 'compound') {
  *       const market = compound.COMPOUND_MARKETS[vault.chain].markets[vault.market];
  *       // expose market metadata via RPC or API
  *   }
  */
+
+import fs from 'fs';
+import path from 'path';
 
 export type VaultCategory = 'flexi' | 'time';
 
@@ -34,37 +37,54 @@ export interface VaultReference {
     market: string;
     /** Optional notes/docs for humans; runtime systems should ignore */
     note?: string;
+    /** Optional icon path resolved relative to the package root */
+    icon?: string;
 }
 
 export type VaultCatalogue = Record<VaultCategory, VaultReference[]>;
 
+// Resolve icon assets whether we run from source (ts-node) or compiled dist output.
+const ICON_ROOT_CANDIDATES = [
+    path.join(__dirname, '../../assets/logos'),
+    path.join(__dirname, '../../../assets/logos')
+];
+
+const ICON_ROOT =
+    ICON_ROOT_CANDIDATES.find((candidate) => fs.existsSync(candidate)) ??
+    ICON_ROOT_CANDIDATES[0];
+
+const resolveIcon = (fileName: string) => path.join(ICON_ROOT, fileName);
+
 export const VAULTS: VaultCatalogue = {
     flexi: [
         {
-            id: 'cashapp-compound-usdc-base',
+            id: 'Compound-USDC-Base',
             riskLevel: 'low',
             protocol: 'compound',
             chain: 'base',
             market: 'usdc',
-            note: 'Flexi vault pointing to Base USDC Compound market.'
+            note: 'USDC Compound market on Base',
+            icon: resolveIcon('compound.png')
         },
         {
-            id: 'cashapp-aave-usdc-base',
+            id: 'Aave-USDC-Base',
             riskLevel: 'low',
             protocol: 'aave',
             chain: 'base',
             market: 'usdc',
-            note: 'Flexi vault pointing to Aave Base USDC reserve.'
+            note: 'USDC Aave market on Base',
+            icon: resolveIcon('aave.png')
         }
     ],
     time: [
         {
-            id: 'cashapp-pendle-usde-20251211',
+            id: 'Pendle-USDe20251211-Base',
             riskLevel: 'medium',
             protocol: 'pendle',
             chain: 'base',
             market: 'usde-base-20251211',
-            note: 'Time vault referencing Pendle PT USDe Dec 2025 market.'
+            note: 'USDe Base market maturing on 11 Dec 2025',
+            icon: resolveIcon('pendle.png')
         }
     ]
 };

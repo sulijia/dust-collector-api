@@ -363,20 +363,77 @@ function isValidAddress(address: string): boolean {
   }
 }
 
+// query user register or not
+app.get('/v1/user/register/:address', async (req, res) => {
+  let address = req.params.address;
+  // check address valid
+  if(isValidAddress(String(address))) {
+    let raw_address = String(address).toLowerCase();
+    if(raw_address.length == 40) {
+      raw_address = '0x' + raw_address
+    }
+    try {
+      let user = await db.get_user(raw_address);
+      console.log(user);
+      let register = false;
+      if(user.address !== "") {
+        register = true;
+      }
+      res.json({
+        code:200,
+        msg:null,
+        data: {
+          register,
+        },
+      });
+    } catch (error) {
+        res.json({
+        code:200,
+        msg:null,
+        data: {
+          register: false,
+        },
+      });
+    }
+  } else {res.json({
+        code:200,
+        msg:null,
+        data: {
+          register: false,
+        },
+      });
+  };
+});
+
 // create new account
 app.post('/v1/user', async (req, res) => {
   let {address} = req.body;
   // check address valid
   if(isValidAddress(String(address))) {
-    await db.create_user(String(address).toLowerCase());
-    res.json({
-      code:200,
-      msg:null,
+    let raw_address = String(address).toLowerCase();
+    if(raw_address.length == 40) {
+      raw_address = '0x' + raw_address
+    }
+    try {
+      await db.create_user(raw_address);
+      res.json({
+        code:200,
+        msg:null,
+        data:null,
+      });
+    } catch (error) {
+        res.json({
+        code:500,
+        msg:error.message,
+        data:null,
+      });
+    }
+  } else {res.json({
+      code:500,
+      msg:'invalid address',
       data:null,
     });
-  } else {
-    res.status(500).json({ error: 'invalid address' });
-  }
+  };
 });
 
 // query user
@@ -411,11 +468,35 @@ function parseTokenOverrides(value: string | undefined) {
 // Daily and Historical Reward
 app.get('/v1/vault/rewards', async (req, res) => {
   let {user, days} = req.query;
-  const userRewards = await db.get_rewards(String(user).toLowerCase(), Number(days));
+  // check address valid
+  if(isValidAddress(String(user))) {
+    let raw_address = String(user).toLowerCase();
+    if(raw_address.length == 40) {
+      raw_address = '0x' + raw_address
+    }
+    try {
+      const userRewards = await db.get_rewards(String(user).toLowerCase(), Number(days));
 
-  res.json(
-    userRewards,
-  );
+      res.json(
+        {
+          code:200,
+          msg:null,
+          data:userRewards,
+        }
+      );
+    } catch (error) {
+      res.json({
+        code:500,
+        msg:error.message,
+        data:null,
+      });
+    }
+  } else {res.json({
+      code:500,
+      msg:'invalid address',
+      data:null,
+    });
+  };
 });
 
 function parsePercent(str: string): number | null {
@@ -586,7 +667,7 @@ app.post('/v1/admin/user/balance', async (req, res) => {
       args.accountAddress = String(user.address);
       const net_transfer = await unified.getNetTransfer(args);
       const stableBalance: bigint = BigInt(summary?.totals?.stableUsd*1000000 || 0);
-      const yesterdayBalance: bigint = BigInt(user.balance);
+      const yesterdayBalance: bigint = BigInt(user.balance || 0);
       const net_transfer_balance: bigint = BigInt(net_transfer?.netTransfer*1000000 || 0);
       const reward: bigint = stableBalance - yesterdayBalance - net_transfer_balance;
       const transer_in_balance: bigint = BigInt(net_transfer?.inboundUsd*1000000 || 0);
