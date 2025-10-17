@@ -666,12 +666,12 @@ app.post('/v1/admin/user/balance', async (req, res) => {
       });
       args.accountAddress = String(user.address);
       const net_transfer = await unified.getNetTransfer(args);
-      const stableBalance: bigint = BigInt(summary?.totals?.stableUsd*1000000 || 0);
+      const stableBalance: bigint = BigInt(Math.round(summary?.totals?.stableUsd*1000000) || 0);
       const yesterdayBalance: bigint = BigInt(user.balance || 0);
-      const net_transfer_balance: bigint = BigInt(net_transfer?.netTransfer*1000000 || 0);
+      const net_transfer_balance: bigint = BigInt(Math.round(net_transfer?.netTransfer*1000000) || 0);
       const reward: bigint = stableBalance - yesterdayBalance - net_transfer_balance;
-      const transer_in_balance: bigint = BigInt(net_transfer?.inboundUsd*1000000 || 0);
-      const transer_out_balance: bigint = BigInt(net_transfer?.outboundUsd*1000000 || 0);
+      const transer_in_balance: bigint = BigInt(Math.round(net_transfer?.inboundUsd*1000000) || 0);
+      const transer_out_balance: bigint = BigInt(Math.round(net_transfer?.outboundUsd*1000000) || 0);
       console.log(reward, stableBalance, net_transfer_balance, transer_in_balance, transer_out_balance);
       await db.create_reward_history(user.id, String(reward), String(stableBalance), String(net_transfer_balance), String(transer_in_balance),
         String(transer_out_balance), new Date(todayUtcMidnightMs));
