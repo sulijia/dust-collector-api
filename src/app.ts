@@ -17,7 +17,7 @@ import { UnifiedSDK, DefaultPriceOracle,NetTransferArgs } from "./cashappSDKV1/b
 import { CompoundSDK } from "./cashappSDKV1/bolaritySDK";
 import { PendleSDK, CHAINS } from "./cashappSDKV1/bolaritySDK";
 import { buildAaveClient } from "./cashappSDKV1/bolaritySDK";
-import { get_vault_details, VaultInfo } from "./cashappSDKV1/examples/vault-info";
+import { get_vault_details } from "./cashappSDKV1/examples/vault-info";
 import {vaultConfig} from "./cashappSDKV1/bolaritySDK"
 import * as db from './db';
 import {

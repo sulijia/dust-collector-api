@@ -371,7 +371,6 @@ export class PendleSDK {
                 amountIn: this._toWei(amountIn, tokenInDecimals),
                 enableAggregator: 'true'
             };
-
             const response = await axios.get(url, { params });
             const { data, tx, tokenApprovals } = response.data;
 
