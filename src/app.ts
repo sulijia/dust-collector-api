@@ -666,6 +666,7 @@ app.post('/v1/admin/user/balance', async (req, res) => {
       });
       args.accountAddress = String(user.address);
       const net_transfer = await unified.getNetTransfer(args);
+      console.log(net_transfer);
       const stableBalance: bigint = BigInt(Math.round(summary?.totals?.stableUsd*1000000) || 0);
       const yesterdayBalance: bigint = BigInt(user.balance || 0);
       const net_transfer_balance: bigint = BigInt(Math.round(net_transfer?.netTransfer*1000000) || 0);
