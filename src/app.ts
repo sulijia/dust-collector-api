@@ -13,7 +13,7 @@ import {get_cross_router} from './get_support_route/get_cross_route'
 import axios from 'axios';
 import { setJson, getJson, storeObjs, getObjs } from "./dataService";
 
-import { UnifiedSDK, DefaultPriceOracle,NetTransferArgs } from "./cashappSDKV1/bolaritySDK";
+import { UnifiedSDK, DefaultPriceOracle,NetTransferArgs,FecthTokenTransferArgs } from "./cashappSDKV1/bolaritySDK";
 import { CompoundSDK } from "./cashappSDKV1/bolaritySDK";
 import { PendleSDK, CHAINS } from "./cashappSDKV1/bolaritySDK";
 import { buildAaveClient } from "./cashappSDKV1/bolaritySDK";
@@ -341,7 +341,7 @@ app.get('/v1/balances/:address', async (req, res) => {
         }
       }
     });
-
+    console.log(unified);
     const summary = await unified.getUnifiedBalanceSummary({
       chainId,
       accountAddress,
@@ -602,6 +602,61 @@ app.get('/v1/vault/detail', async (req, res) => {
   res.json(results);
 });
 
+// Get user token transfers
+app.get('/v1/user/token/transfers/:address', async (req, res) => {
+  let address = req.params.address;
+  let {page, size} = req.query;
+  let pageN = Number(page);
+  let sizeN = Number(size);
+  if(!pageN || pageN < 1) {
+    pageN = 1;
+  }
+  if(!sizeN || sizeN == 0) {
+    sizeN = 50;
+  }
+  // check address valid
+  if(isValidAddress(String(address))) {
+    let raw_address = String(address).toLowerCase();
+    const chainId = CHAINS.base.id;
+
+    const compound = new CompoundSDK({ chainId, rpcUrl: process.env.RPC_URL_8453 });
+    const pendle = new PendleSDK({ chainId, rpcUrl: process.env.RPC_URL_8453 });
+    const aaveClient = buildAaveClient();
+    const unified = new UnifiedSDK({
+      chainId,
+      priceOracle: new DefaultPriceOracle(),
+      compound: { default: { sdk: compound } },
+      pendle: { default: { sdk: pendle } },
+      aave: {
+        [chainId]: {
+          client: aaveClient,
+          markets: ["0xA238Dd80C259a72e81d7e4664a9801593F98d1c5" /* ... */]
+        }
+      },
+      rpcUrls: { [chainId]: process.env.RPC_URL_8453  },
+    });
+
+    const args: FecthTokenTransferArgs = {
+        chainId,
+        startTime: 0,
+        endTime: 0,
+        userAddress: raw_address,
+    };
+    let tokenTransfers = await unified._fetchTokenTransfers(args, pageN, sizeN);
+    res.json({
+      code:200,
+      msg:null,
+      data:tokenTransfers,
+    });
+  } else {
+    res.json({
+      code:500,
+      msg:'invalid address',
+      data:null,
+    });
+  }
+});
+
 // Admin api-Vault Detail
 app.get('/v1/admin/vault/detail', async (req, res) => {
   let results = await get_vault_details();
@@ -685,6 +740,7 @@ app.post('/v1/admin/user/balance', async (req, res) => {
     data:null,
   });
 });
+
 
 app.listen(port, () => {
   console.log(`服务已启动: http://localhost:${port}`);

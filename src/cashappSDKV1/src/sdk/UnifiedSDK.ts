@@ -23,6 +23,7 @@ import { PendleSDK } from './PendleSDK';
 import { DEFAULT_RPCS, DEFAULT_TRANSFER_EXCLUSIONS } from '../config/common';
 import { PORTFOLIO_TOKENS } from '../config/portfolio';
 import axios from 'axios';
+import { TokenTransfer } from './types';
 
 const DEFAULT_STABLECOIN_SYMBOLS = new Set<string>([
     'USDC', 'USDT', 'DAI', 'USDBC', 'USDP', 'USDS', 'PAX', 'BUSD', 'TUSD',
@@ -123,6 +124,7 @@ export class UnifiedSDK {
     globalStableSymbols: Set<string>;
     globalStableAddresses: Map<number, Set<string>>;
     transferExclusions: any;
+    timestampToBlock: Map<number, number>;
 
     constructor(config: any = {}) {
         this.defaultChainId = config.chainId ?? null;
@@ -139,6 +141,7 @@ export class UnifiedSDK {
         this.portfolioTokens = config.portfolioTokens || PORTFOLIO_TOKENS || {};
         this.rpcUrls = { ...DEFAULT_RPCS, ...(config.rpcUrls || {}) };
         this._providerCache = new Map();
+        this.timestampToBlock = new Map();
 
         this.globalStableSymbols = new Set(DEFAULT_STABLECOIN_SYMBOLS);
         if (Array.isArray(config.extraStableSymbols)) {
@@ -478,8 +481,18 @@ export class UnifiedSDK {
         }
 
         const exclusionSet = this._getTransferExclusionSet(resolvedChainId, excludeAddresses);
-        const fromBlock = await this._findBlockByTimestamp(resolvedChainId, startSeconds, { preference: 'floor' });
-        const toBlock = await this._findBlockByTimestamp(resolvedChainId, endSeconds, { preference: 'ceil' });
+        let  fromBlock = this.timestampToBlock.get(startSeconds);
+        console.log("from block:" + fromBlock);
+        if(fromBlock == 0 || fromBlock == undefined) {
+            fromBlock = await this._findBlockByTimestamp(resolvedChainId, startSeconds, { preference: 'floor' });
+            this.timestampToBlock.set(startSeconds, fromBlock);
+        }
+        let  toBlock = this.timestampToBlock.get(endSeconds);
+        console.log("to block:" + toBlock);
+        if(toBlock == 0 || toBlock == undefined) {
+            toBlock = await this._findBlockByTimestamp(resolvedChainId, endSeconds, { preference: 'ceil' });
+            this.timestampToBlock.set(endSeconds, toBlock);
+        }
 
         if (toBlock < fromBlock) {
             throw new Error('Unable to resolve block range for requested timestamps');
@@ -605,6 +618,68 @@ export class UnifiedSDK {
             accountSummaries: finalizedSummaries,
             accountInfo
         };
+    }
+
+   async _fetchTokenTransfers({
+        chainId,
+        userAddress,
+        startTime,
+        endTime,
+        options = {},
+    } = {}, page, size) {
+        const resolvedChainId = chainId ?? this.defaultChainId;
+        if (!resolvedChainId) {
+            throw new Error('chainId is required');
+        }
+
+        const provider = this._getRpcProvider(resolvedChainId);
+        if (!provider) {
+            throw new Error(`No RPC URL configured for chain ${resolvedChainId}`);
+        }
+
+        const tokenConfigs = await this._resolveTransferTokens({
+            chainId: resolvedChainId,
+            tokens: this.portfolioTokens?.[chainId]?.assets,
+            provider:provider,
+        });
+
+        if (!tokenConfigs.length) {
+            throw new Error(`No stable tokens available for chain ${resolvedChainId}`);
+        }
+
+        let  fromBlock = 0;
+        let  toBlock = 0;
+
+        if(startTime != 0 && startTime != undefined) {
+            fromBlock = this.timestampToBlock.get(startTime);
+            if(fromBlock == 0 || fromBlock == undefined) {
+                fromBlock = await this._findBlockByTimestamp(resolvedChainId, startTime, { preference: 'floor' });
+                this.timestampToBlock.set(startTime, fromBlock);
+            }
+        }
+
+        if(endTime != 0 && endTime != undefined) {
+            toBlock = this.timestampToBlock.get(endTime);
+            if(toBlock == 0 || toBlock == undefined) {
+                toBlock = await this._findBlockByTimestamp(resolvedChainId, endTime, { preference: 'ceil' });
+                this.timestampToBlock.set(endTime, toBlock);
+            }
+
+            if (toBlock < fromBlock) {
+                throw new Error('Unable to resolve block range for requested timestamps');
+            }
+        }
+
+        let tranfers:TokenTransfer[] = await this._collectTokenTransfers({
+                chainId: resolvedChainId,
+                userAddress,
+                fromBlock,
+                toBlock,
+                page,
+                size,
+                tokenConfigs,
+        });
+        return tranfers;
     }
 
     _resolveAccount(accountAddress) {
@@ -1082,6 +1157,69 @@ export class UnifiedSDK {
         }
 
         return logs;
+    }
+
+    async _collectTokenTransfers({ chainId, userAddress, fromBlock, toBlock, page, size, tokenConfigs }) {
+        if (fromBlock > toBlock) {
+            return [];
+        }
+        const MAX_OFFSET = 10000;
+        const transfers:TokenTransfer[] = [];
+        let curPage = 1;
+        let curOffset = MAX_OFFSET;
+        while(true) {
+            try {
+                let url = `https://api.etherscan.io/v2/api?chainid=${chainId}&module=account&action=tokentx`
+                if(fromBlock != 0) {
+                    url += `&startblock=${fromBlock}`
+                }
+                if(toBlock != 0) {
+                    url += `&endblock=${toBlock}`
+                }
+                url += `&offset=${curOffset}&apikey=${process.env.API_KEY}&address=${userAddress}&page=${curPage}&sort=desc`;
+                const response = await axios.get(url);
+                const data = response.data || {};
+                if (typeof data?.result === 'object') {
+                    const chunk = data?.result;
+                    if(chunk != null) {
+                        for(const tx of chunk){
+                            for (const token of tokenConfigs) {
+                                if(token.address.toLowerCase() != tx.contractAddress.toLowerCase()) {
+                                    continue;
+                                }
+                                transfers.push({
+                                    from: tx.from,
+                                    to: tx.to,
+                                    contractAddress: tx.contractAddress,
+                                    input: tx.to==userAddress,
+                                    value: String(tx.value),
+                                    decimal: Number(tx.tokenDecimal),
+                                    timestamp: Number(tx.timeStamp),
+                                });
+                            }
+                        }
+                        // Result window is too large, PageNo x Offset size must be less than or equal to 10000
+                        break;
+                        // TODO:If you need to search for values ​​greater than MAX_OFFSET
+                        // if(chunk.length == MAX_OFFSET ) {
+                        //     curPage += 1;
+                        //     continue;
+                        // } else {
+                        //     break;
+                        // }
+                    } else {
+                        console.log(data);
+                        break;
+                    }
+                } else {
+                    break;
+                }
+            } catch (error) {
+                throw new Error(`Unable to fetch token transfers between blocks ${fromBlock}-${toBlock}: ${error?.message || error}`);
+            }
+        }
+        const start = (page - 1) * size; // page 从 1 开始
+        return transfers.slice(start, start + size);
     }
 
     async _getBlockTimestamp(provider, blockNumber, cache = new Map()) {
