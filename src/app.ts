@@ -23,6 +23,7 @@ import * as db from './db';
 import {
     getAddress,
 } from 'ethers';
+import { chainId } from '@aave/client';
 
 const app = express();
 const port = 7788;
@@ -605,19 +606,23 @@ app.get('/v1/vault/detail', async (req, res) => {
 // Get user token transfers
 app.get('/v1/user/token/transfers/:address', async (req, res) => {
   let address = req.params.address;
-  let {page, size} = req.query;
+  let {page, size, chainId} = req.query;
   let pageN = Number(page);
   let sizeN = Number(size);
+  let chainIdN = Number(chainId);
   if(!pageN || pageN < 1) {
     pageN = 1;
   }
   if(!sizeN || sizeN == 0) {
     sizeN = 50;
   }
+  if(!chainIdN || chainIdN == 0) {
+    chainIdN = CHAINS.base.id;
+  }
   // check address valid
   if(isValidAddress(String(address))) {
     let raw_address = String(address).toLowerCase();
-    const chainId = CHAINS.base.id;
+    const chainId = chainIdN;
 
     const compound = new CompoundSDK({ chainId, rpcUrl: process.env.RPC_URL_8453 });
     const pendle = new PendleSDK({ chainId, rpcUrl: process.env.RPC_URL_8453 });
