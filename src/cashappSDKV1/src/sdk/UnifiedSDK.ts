@@ -1167,6 +1167,8 @@ export class UnifiedSDK {
         const transfers:TokenTransfer[] = [];
         let curPage = 1;
         let curOffset = MAX_OFFSET;
+        let TRY_MAX = 3;
+        let tryCurrent = 0;
         while(true) {
             try {
                 let url = `https://api.etherscan.io/v2/api?chainid=${chainId}&module=account&action=tokentx`
@@ -1231,10 +1233,16 @@ export class UnifiedSDK {
                         break;
                     }
                 } else {
-                    break;
+                    if(tryCurrent == TRY_MAX) {
+                        break;
+                    }
+                    tryCurrent += 1;
                 }
             } catch (error) {
-                throw new Error(`Unable to fetch token transfers between blocks ${fromBlock}-${toBlock}: ${error?.message || error}`);
+                if(tryCurrent == TRY_MAX) {
+                    throw new Error(`Unable to fetch token transfers between blocks ${fromBlock}-${toBlock}: ${error?.message || error}`);
+                }
+                tryCurrent += 1;
             }
         }
         const start = (page - 1) * size; // page 从 1 开始

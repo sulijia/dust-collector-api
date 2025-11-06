@@ -26,3 +26,8 @@ export async function getObjs<T = any>(key: string): Promise<T[] | null> {
   }
   return null;
 }
+
+export async function storeObjsWithTime(key: string, data: object[], seconds:number) {
+  const jsonString = JSON.stringify(data);
+  await redis.setex(key, seconds, jsonString);
+}

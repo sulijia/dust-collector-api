@@ -11,7 +11,7 @@ import { get_support_tokens_local } from './get_support_tokens_LC/get_support_to
 import { SUPPORT_CHAINS, SUPPORT_NETWORK } from './const';
 import {get_cross_router} from './get_support_route/get_cross_route'
 import axios from 'axios';
-import { setJson, getJson, storeObjs, getObjs } from "./dataService";
+import { setJson, getJson, storeObjs, getObjs, storeObjsWithTime } from "./dataService";
 
 import { UnifiedSDK, DefaultPriceOracle,NetTransferArgs,FecthTokenTransferArgs } from "./cashappSDKV1/bolaritySDK";
 import { CompoundSDK } from "./cashappSDKV1/bolaritySDK";
@@ -621,33 +621,43 @@ app.get('/v1/user/token/transfers/:address', async (req, res) => {
   }
   // check address valid
   if(isValidAddress(String(address))) {
+    let tokenTransfers;
     let raw_address = String(address).toLowerCase();
-    const chainId = chainIdN;
+    let cacheKey = `cashapp:token_transfer:${raw_address}:${pageN}:${sizeN}`;
+    let cacheData = await getObjs(cacheKey);
+    if(cacheData == null){
+      const chainId = chainIdN;
 
-    const compound = new CompoundSDK({ chainId, rpcUrl: process.env.RPC_URL_8453 });
-    const pendle = new PendleSDK({ chainId, rpcUrl: process.env.RPC_URL_8453 });
-    const aaveClient = buildAaveClient();
-    const unified = new UnifiedSDK({
-      chainId,
-      priceOracle: new DefaultPriceOracle(),
-      compound: { default: { sdk: compound } },
-      pendle: { default: { sdk: pendle } },
-      aave: {
-        [chainId]: {
-          client: aaveClient,
-          markets: ["0xA238Dd80C259a72e81d7e4664a9801593F98d1c5" /* ... */]
-        }
-      },
-      rpcUrls: { [chainId]: process.env.RPC_URL_8453  },
-    });
-
-    const args: FecthTokenTransferArgs = {
+      const compound = new CompoundSDK({ chainId, rpcUrl: process.env.RPC_URL_8453 });
+      const pendle = new PendleSDK({ chainId, rpcUrl: process.env.RPC_URL_8453 });
+      const aaveClient = buildAaveClient();
+      const unified = new UnifiedSDK({
         chainId,
-        startTime: 0,
-        endTime: 0,
-        userAddress: raw_address,
-    };
-    let tokenTransfers = await unified._fetchTokenTransfers(args, pageN, sizeN);
+        priceOracle: new DefaultPriceOracle(),
+        compound: { default: { sdk: compound } },
+        pendle: { default: { sdk: pendle } },
+        aave: {
+          [chainId]: {
+            client: aaveClient,
+            markets: ["0xA238Dd80C259a72e81d7e4664a9801593F98d1c5" /* ... */]
+          }
+        },
+        rpcUrls: { [chainId]: process.env.RPC_URL_8453  },
+      });
+
+      const args: FecthTokenTransferArgs = {
+          chainId,
+          startTime: 0,
+          endTime: 0,
+          userAddress: raw_address,
+      };
+      tokenTransfers = await unified._fetchTokenTransfers(args, pageN, sizeN);
+      if(tokenTransfers.length!=0){
+        await storeObjsWithTime(cacheKey,tokenTransfers, 15);
+      }
+    } else {
+      tokenTransfers = cacheData;
+    }
     res.json({
       code:200,
       msg:null,
