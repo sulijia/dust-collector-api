@@ -142,14 +142,19 @@ export const get_all_users_and_balance = async (): Promise<UserModel[]> => {
   const client = await db_pool.connect();
   try {
     const query = `
-      SELECT DISTINCT ON (u.id) r.balance, u.id,u.address
-FROM users u
-LEFT JOIN reward_history r
-ON u.id = r."user"
-AND r.date_at = $1::timestamptz
-ORDER BY
+SELECT
 u.id,
-r.created_at DESC
+u.address,
+COALESCE(r.balance, NULL) AS balance
+FROM users u
+LEFT JOIN LATERAL (
+SELECT r1.balance
+FROM reward_history r1
+WHERE r1."user" = u.id
+AND r1.date_at <= $1::timestamptz
+ORDER BY r1.date_at DESC, r1.created_at DESC
+LIMIT 1
+) r ON TRUE;
     `;
     const res = await client.query(query, [yesterdayUtcMidnight]);
     return res.rows.map(row => ({
