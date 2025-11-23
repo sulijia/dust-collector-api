@@ -199,6 +199,7 @@ export interface TokenTransfer {
     to: string,
     chainId: number,
     chainName?:string,
+    gasless?:boolean,
 }
 
 export interface FecthTokenTransferArgs {

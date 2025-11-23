@@ -1180,6 +1180,7 @@ export class UnifiedSDK {
                 }
                 url += `&offset=${curOffset}&apikey=${process.env.API_KEY}&address=${userAddress}&page=${curPage}&sort=desc`;
                 const response = await axios.get(url);
+                console.log(url);
                 const data = response.data || {};
                 if (typeof data?.result === 'object') {
                     const chunk = data?.result;
@@ -1190,6 +1191,11 @@ export class UnifiedSDK {
                                     continue;
                                 }
                                 let type = "";
+                                let gasless = false;
+                                // methodId:0xa9059cbb
+                                // functionName:transfer
+                                // "methodId": "0x765e827f",
+                                // "functionName": "handleOps(tuple[] ops,address beneficiary)",
                                 if(tx.methodId == "0xa9059cbb") {
                                     if(tx.to == userAddress) {
                                         type = "receive"
@@ -1201,6 +1207,9 @@ export class UnifiedSDK {
                                         type = "withdraw"
                                     } else {
                                         type = "deposit"
+                                    }
+                                    if(tx.methodId == "0x765e827f") {
+                                        gasless = true;
                                     }
                                 }
                                 transfers.push({
@@ -1216,6 +1225,7 @@ export class UnifiedSDK {
                                     from: tx.from,
                                     to: tx.to,
                                     chainId,
+                                    gasless,
                                 });
                             }
                         }
