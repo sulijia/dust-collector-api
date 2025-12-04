@@ -20,6 +20,7 @@ import {
 } from 'ethers';
 import { CompoundSDK } from './CompoundSDK';
 import { PendleSDK } from './PendleSDK';
+import { MorphoSDK } from './MorphoSDK';
 import { DEFAULT_RPCS, DEFAULT_TRANSFER_EXCLUSIONS } from '../config/common';
 import { PORTFOLIO_TOKENS } from '../config/portfolio';
 import axios from 'axios';
@@ -135,7 +136,8 @@ export class UnifiedSDK {
         this.protocols = {
             aave: config.aave || {},
             compound: config.compound || null,
-            pendle: config.pendle || null
+            pendle: config.pendle || null,
+            morpho: config.morpho || null
         };
 
         this.portfolioTokens = config.portfolioTokens || PORTFOLIO_TOKENS || {};
@@ -221,6 +223,9 @@ export class UnifiedSDK {
             case 'pendle':
                 result = await this._getPendleBalances({ chainId: resolvedChainId, account, options });
                 break;
+            case 'morpho':
+                result = await this._getMorphoBalances({ chainId: resolvedChainId, account, options });
+                break;
             default:
                 throw new Error(`Unsupported protocol: ${protocol}`);
         }
@@ -256,7 +261,7 @@ export class UnifiedSDK {
 
         const requestedProtocols = Array.isArray(protocols) && protocols.length
             ? protocols.map(value => value.toString().toLowerCase())
-            : ['aave', 'compound', 'pendle'];
+            : ['aave', 'compound', 'pendle', 'morpho'];
 
         const responses = [];
         const failures = [];
@@ -274,6 +279,9 @@ export class UnifiedSDK {
                         break;
                     case 'pendle':
                         isConfigured = !!this._resolvePendleConfig(resolvedChainId);
+                        break;
+                    case 'morpho':
+                        isConfigured = !!this._resolveMorphoConfig(resolvedChainId);
                         break;
                     default:
                         failures.push({ protocol, error: 'Unsupported protocol' });
@@ -313,15 +321,15 @@ export class UnifiedSDK {
             metadata: {}
         };
 
-        try {
-            wallet = await this._getWalletPortfolioBalances({
-                chainId: resolvedChainId,
-                account,
-                includeItems
-            });
-        } catch (error) {
-            failures.push({ protocol: 'wallet', error: error?.message || error });
-        }
+        // try {
+        //     wallet = await this._getWalletPortfolioBalances({
+        //         chainId: resolvedChainId,
+        //         account,
+        //         includeItems
+        //     });
+        // } catch (error) {
+        //     failures.push({ protocol: 'wallet', error: error?.message || error });
+        // }
 
         const walletUsd = wallet?.totals?.usd || 0;
         const grandTotal = depositsUsd + walletUsd;
@@ -1871,6 +1879,258 @@ export class UnifiedSDK {
         };
     }
 
+    async _getMorphoBalances({ chainId, account, options }) {
+        const context = this._resolveMorphoConfig(chainId);
+        if (!context) {
+            throw new Error(`Morpho configuration not provided for chain ${chainId}`);
+        }
+
+        const sdk = context.sdk || context.instance || context;
+        if (!(sdk instanceof MorphoSDK)) {
+            throw new Error('Morpho SDK instance is required');
+        }
+
+        const markets = Array.isArray(context.markets) && context.markets.length
+            ? context.markets
+            : Object.keys(sdk.markets || {});
+
+        if (!markets.length) {
+            throw new Error('No Morpho markets configured');
+        }
+
+        const customStable = new Set((context.stableSymbols || []).map(symbol => symbol.toUpperCase()));
+        const stableAddressSet = new Set((context.stableAddresses || []).map(addr => addr.toLowerCase()));
+        const priceOverrides = context.priceOverrides || {};
+
+        const items = [];
+        const failures = [];
+
+        for (const marketKey of markets) {
+            try {
+                const balance = await sdk.getBalance(marketKey, account);
+
+                const market = sdk.markets[marketKey];
+                if (!market) continue;
+
+                // Add supplied balance
+                if (balance.supplied > 0) {
+                    const loanAsset = Object.values(market.assets).find(a => a.role === 'loan');
+                    if (loanAsset) {
+                        const isStable = this._isStableAsset(
+                            { symbol: loanAsset.symbol, address: loanAsset.address, chainId },
+                            { customSymbolSet: customStable, customAddressSet: stableAddressSet }
+                        );
+
+                        let price = null;
+                        let usdValue = null;
+                        if (isStable) {
+                            price = 1;
+                            usdValue = balance.supplied;
+                        } else {
+                            price = this._resolvePriceOverride({ priceOverrides, symbol: loanAsset.symbol, address: loanAsset.address })
+                                ?? await this.priceOracle.getUsdPrice({ chainId, address: loanAsset.address, symbol: loanAsset.symbol });
+                            usdValue = balance.supplied * price;
+                        }
+
+                        items.push({
+                            protocol: 'morpho',
+                            market: marketKey,
+                            symbol: loanAsset.symbol,
+                            address: loanAsset.address,
+                            amount: balance.supplied,
+                            usdValue,
+                            decimals: loanAsset.decimals,
+                            price,
+                            isStable,
+                            type: 'supplied'
+                        });
+                    }
+                }
+
+                // Add collateral balance
+                if (balance.collateral > 0) {
+                    const collateralAsset = Object.values(market.assets).find(a => a.role === 'collateral');
+                    if (collateralAsset) {
+                        const isStable = this._isStableAsset(
+                            { symbol: collateralAsset.symbol, address: collateralAsset.address, chainId },
+                            { customSymbolSet: customStable, customAddressSet: stableAddressSet }
+                        );
+
+                        let price = null;
+                        let usdValue = null;
+                        if (isStable) {
+                            price = 1;
+                            usdValue = balance.collateral;
+                        } else {
+                            price = this._resolvePriceOverride({ priceOverrides, symbol: collateralAsset.symbol, address: collateralAsset.address })
+                                ?? await this.priceOracle.getUsdPrice({ chainId, address: collateralAsset.address, symbol: collateralAsset.symbol });
+                            usdValue = balance.collateral * price;
+                        }
+
+                        items.push({
+                            protocol: 'morpho',
+                            market: marketKey,
+                            symbol: collateralAsset.symbol,
+                            address: collateralAsset.address,
+                            amount: balance.collateral,
+                            usdValue,
+                            decimals: collateralAsset.decimals,
+                            price,
+                            isStable,
+                            type: 'collateral'
+                        });
+                    }
+                }
+
+                // Subtract borrowed balance (debt)
+                if (balance.borrowed > 0) {
+                    const loanAsset = Object.values(market.assets).find(a => a.role === 'loan');
+                    if (loanAsset) {
+                        const isStable = this._isStableAsset(
+                            { symbol: loanAsset.symbol, address: loanAsset.address, chainId },
+                            { customSymbolSet: customStable, customAddressSet: stableAddressSet }
+                        );
+
+                        let price = null;
+                        let usdValue = null;
+                        if (isStable) {
+                            price = 1;
+                            usdValue = -balance.borrowed; // Negative for debt
+                        } else {
+                            price = this._resolvePriceOverride({ priceOverrides, symbol: loanAsset.symbol, address: loanAsset.address })
+                                ?? await this.priceOracle.getUsdPrice({ chainId, address: loanAsset.address, symbol: loanAsset.symbol });
+                            usdValue = -balance.borrowed * price; // Negative for debt
+                        }
+
+                        items.push({
+                            protocol: 'morpho',
+                            market: marketKey,
+                            symbol: loanAsset.symbol,
+                            address: loanAsset.address,
+                            amount: -balance.borrowed, // Negative for debt
+                            usdValue,
+                            decimals: loanAsset.decimals,
+                            price,
+                            isStable,
+                            type: 'borrowed'
+                        });
+                    }
+                }
+
+            } catch (error) {
+                if (this.verbose) {
+                    console.warn(`Morpho balance failed for market ${marketKey}:`, error?.message || error);
+                }
+                failures.push({ market: marketKey, error: error?.message || error });
+            }
+        }
+
+        // Query Vault balances (Vaults are now part of MorphoSDK)
+        const vaultItems = [];
+        const vaultFailures = [];
+
+        if (Object.keys(sdk.vaults || {}).length > 0) {
+            try {
+                // Get all vault balances using MorphoSDK
+                const vaultBalances = await sdk.getAllVaultBalances(account);
+
+                for (const vaultBalance of vaultBalances) {
+                    try {
+                        if (vaultBalance.assets <= 0) continue;
+
+                        // Get vault config
+                        const vaultConfig = sdk.getVaultConfig(
+                            Object.keys(sdk.vaults).find(key =>
+                                sdk.vaults[key].address.toLowerCase() === vaultBalance.vaultAddress.toLowerCase()
+                            ) || ''
+                        );
+
+                        const isStable = this._isStableAsset(
+                            { symbol: vaultBalance.asset, address: vaultConfig?.assetAddress, chainId },
+                            { customSymbolSet: customStable, customAddressSet: stableAddressSet }
+                        );
+
+                        let price = null;
+                        let usdValue = null;
+
+                        if (isStable) {
+                            price = 1;
+                            usdValue = vaultBalance.assets;
+                        } else if (vaultConfig?.assetAddress) {
+                            try {
+                                price = this._resolvePriceOverride({
+                                    priceOverrides,
+                                    symbol: vaultBalance.asset,
+                                    address: vaultConfig.assetAddress
+                                }) ?? await this.priceOracle.getUsdPrice({
+                                    chainId,
+                                    address: vaultConfig.assetAddress,
+                                    symbol: vaultBalance.asset
+                                });
+                                usdValue = vaultBalance.assets * price;
+                            } catch (error) {
+                                if (this.verbose) {
+                                    console.warn(`Failed to get price for ${vaultBalance.asset}:`, error?.message);
+                                }
+                            }
+                        }
+
+                        vaultItems.push({
+                            protocol: 'morpho',
+                            subProtocol: 'vault',
+                            vault: vaultBalance.vault,
+                            vaultAddress: vaultBalance.vaultAddress,
+                            symbol: vaultBalance.asset,
+                            address: vaultConfig?.assetAddress,
+                            amount: vaultBalance.assets,
+                            shares: vaultBalance.shares,
+                            usdValue,
+                            decimals: vaultConfig?.decimals,
+                            price,
+                            isStable,
+                            type: 'vault-deposit',
+                            metadata: {
+                                sharePrice: vaultBalance.sharePrice,
+                                totalVaultAssets: vaultBalance.totalAssets,
+                                totalVaultShares: vaultBalance.totalShares
+                            }
+                        });
+
+                    } catch (error) {
+                        if (this.verbose) {
+                            console.warn(`Failed to process vault ${vaultBalance.vault}:`, error?.message || error);
+                        }
+                        vaultFailures.push({
+                            vault: vaultBalance.vault,
+                            error: error?.message || error
+                        });
+                    }
+                }
+            } catch (error) {
+                if (this.verbose) {
+                    console.warn('Failed to query Morpho vaults:', error?.message || error);
+                }
+                vaultFailures.push({ error: error?.message || error });
+            }
+        }
+
+        // Combine Morpho Blue items and Vault items
+        const allItems = [...items, ...vaultItems];
+        const allFailures = [...failures, ...vaultFailures];
+
+        return {
+            items: allItems,
+            metadata: {
+                protocol: 'morpho',
+                markets,
+                vaultCount: vaultItems.length,
+                blueItemCount: items.length,
+                totalItemCount: allItems.length,
+                failures: allFailures.length > 0 ? allFailures : undefined
+            }
+        };
+    }
+
     _resolveAaveConfig(chainId) {
         const config = this.protocols.aave || {};
         return config[chainId] || config.default || null;
@@ -1895,6 +2155,18 @@ export class UnifiedSDK {
             return { sdk: config };
         }
         if (config.sdk instanceof PendleSDK) {
+            return config;
+        }
+        return config[chainId] || config.default || null;
+    }
+
+    _resolveMorphoConfig(chainId) {
+        const config = this.protocols.morpho;
+        if (!config) return null;
+        if (config instanceof MorphoSDK) {
+            return { sdk: config };
+        }
+        if (config.sdk instanceof MorphoSDK) {
             return config;
         }
         return config[chainId] || config.default || null;

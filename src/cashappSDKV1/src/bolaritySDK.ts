@@ -20,6 +20,10 @@ export {
 } from './sdk/PendleSDK';
 
 export {
+    MorphoSDK
+} from './sdk/MorphoSDK';
+
+export {
     UnifiedSDK,
     DefaultPriceOracle
 } from './sdk/UnifiedSDK';

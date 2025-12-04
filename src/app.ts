@@ -14,7 +14,7 @@ import axios from 'axios';
 import { setJson, getJson, storeObjs, getObjs, storeObjsWithTime } from "./dataService";
 
 import { UnifiedSDK, DefaultPriceOracle,NetTransferArgs,FecthTokenTransferArgs } from "./cashappSDKV1/bolaritySDK";
-import { CompoundSDK } from "./cashappSDKV1/bolaritySDK";
+import { CompoundSDK,  MorphoSDK} from "./cashappSDKV1/bolaritySDK";
 import { PendleSDK, CHAINS } from "./cashappSDKV1/bolaritySDK";
 import { buildAaveClient } from "./cashappSDKV1/bolaritySDK";
 import { get_vault_details } from "./cashappSDKV1/examples/vault-info";
@@ -326,10 +326,11 @@ app.get('/v1/balances/:address', async (req, res) => {
     const accountAddress = req.params.address;
 
     const chainId = CHAINS.base.id;
-    
+
     const compound = new CompoundSDK({ chainId, rpcUrl: process.env.RPC_URL_8453 });
     const pendle = new PendleSDK({ chainId, rpcUrl: process.env.RPC_URL_8453 });
     const aaveClient = buildAaveClient();
+    const morpho = new MorphoSDK({ chainId, rpcUrl: process.env.RPC_URL_8453 });
     const unified = new UnifiedSDK({
       chainId,
       priceOracle: new DefaultPriceOracle(),
@@ -340,9 +341,10 @@ app.get('/v1/balances/:address', async (req, res) => {
           client: aaveClient,
           markets: ["0xA238Dd80C259a72e81d7e4664a9801593F98d1c5" /* ... */]
         }
-      }
+      },
+      morpho: {
+        sdk: morpho}
     });
-    console.log(unified);
     const summary = await unified.getUnifiedBalanceSummary({
       chainId,
       accountAddress,
