@@ -20,7 +20,11 @@ export {
 } from './sdk/PendleSDK';
 
 export {
-    MorphoSDK
+    MorphoSDK,
+    MorphoResult,
+    MorphoAPR,
+    MorphoBalance,
+    VaultBalance
 } from './sdk/MorphoSDK';
 
 export {
@@ -32,6 +36,7 @@ export * from './sdk/types';
 
 export * as compoundConfig from './config/compound';
 export * as pendleConfig from './config/pendle';
+export * as morphoConfig from './config/morpho';
 export * as commonConfig from './config/common';
 export * as portfolioConfig from './config/portfolio';
 

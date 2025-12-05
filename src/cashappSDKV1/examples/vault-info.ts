@@ -6,9 +6,11 @@ import { buildAaveClient } from '../src/aave/client';
 import {
   CompoundSDK,
   PendleSDK,
+  MorphoSDK,
   commonConfig,
   compoundConfig,
   pendleConfig,
+  morphoConfig,
   vaultConfig
 } from '../bolaritySDK';
 import type { VaultReference } from '../src/config/vaults';
@@ -16,6 +18,7 @@ import type { VaultReference } from '../src/config/vaults';
 const { DEFAULT_RPCS } = commonConfig;
 const { COMPOUND_CHAIN_IDS, COMPOUND_MARKETS } = compoundConfig;
 const { PENDLE_CHAINS, PENDLE_MARKETS, PENDLE_API_BASE } = pendleConfig;
+const { MORPHO_CHAIN_IDS, MORPHO_MARKETS } = morphoConfig;
 const { VAULTS, VAULT_LIST } = vaultConfig;
 
 const AAVE_CHAIN_IDS: Record<string, number> = {
@@ -24,6 +27,7 @@ const AAVE_CHAIN_IDS: Record<string, number> = {
 
 const compoundClients = new Map<number, CompoundSDK>();
 const pendleClients = new Map<number, PendleSDK>();
+const morphoClients = new Map<number, MorphoSDK>();
 const aaveClient = buildAaveClient();
 
 function extractNumber(value: unknown): number | null {
@@ -85,6 +89,16 @@ function getPendleClient(chainId: number): PendleSDK {
         }));
     }
     return pendleClients.get(chainId)!;
+}
+
+function getMorphoClient(chainId: number): MorphoSDK {
+    if (!morphoClients.has(chainId)) {
+        morphoClients.set(chainId, new MorphoSDK({
+            chainId,
+            rpcUrl: getRpcUrl(chainId)
+        }));
+    }
+    return morphoClients.get(chainId)!;
 }
 
 function resolveCategory(vault: VaultReference): 'flexi' | 'time' {
@@ -189,6 +203,87 @@ async function fetchAaveMetrics(vault: VaultReference) {
     return { apy: null, tvl: null };
 }
 
+async function fetchMorphoMetrics(vault: VaultReference) {
+    const chainId = MORPHO_CHAIN_IDS[vault.chain as keyof typeof MORPHO_CHAIN_IDS];
+    if (!chainId) {
+        throw new Error(`Unknown Morpho chain '${vault.chain}' for vault ${vault.id}`);
+    }
+
+    const chainConfig = MORPHO_MARKETS[vault.chain];
+    if (!chainConfig) {
+        throw new Error(`Morpho config not found for chain: ${vault.chain}`);
+    }
+
+    const vaultConfig = chainConfig.vaults?.[vault.market];
+    if (!vaultConfig) {
+        throw new Error(`Morpho vault not found: ${vault.chain}.${vault.market}`);
+    }
+
+    const sdk = getMorphoClient(chainId);
+
+    let apy: number | null = null;
+    let tvl: number | null = null;
+
+    try {
+        // Get vault contract to fetch TVL
+        const vaultContract = sdk._getVaultContract(vaultConfig.address);
+        const totalAssets = await vaultContract.totalAssets();
+        const totalAssetsNumber = sdk._fromWei(totalAssets, vaultConfig.decimals);
+
+        // For TVL, we need to convert to USD. Since we're dealing with USDC (6 decimals),
+        // the value is already in USD
+        if (vaultConfig.asset === 'USDC') {
+            tvl = totalAssetsNumber;
+        } else {
+            // For other assets, we'd need a price oracle
+            tvl = totalAssetsNumber;
+        }
+
+        // Fetch APY from Morpho's official GraphQL API
+        try {
+            const graphqlQuery = {
+                query: `
+                    query GetVaultAPY($address: String!, $chainId: Int!) {
+                        vaultByAddress(address: $address, chainId: $chainId) {
+                            address
+                            state {
+                                apy
+                                netApy
+                            }
+                        }
+                    }
+                `,
+                variables: {
+                    address: vaultConfig.address,
+                    chainId: chainId
+                }
+            };
+
+            const response = await axios.post('https://blue-api.morpho.org/graphql', graphqlQuery, {
+                timeout: 10000,
+                headers: { 'Content-Type': 'application/json' }
+            });
+
+            if (response.data?.data?.vaultByAddress?.state) {
+                const state = response.data.data.vaultByAddress.state;
+                // Prefer netApy (after fees) over gross apy
+                if (typeof state.netApy === 'number' && state.netApy > 0) {
+                    apy = state.netApy;
+                } else if (typeof state.apy === 'number' && state.apy > 0) {
+                    apy = state.apy;
+                }
+            }
+        } catch (error) {
+            console.error(`Could not fetch APY from Morpho API for ${vault.id}:`, (error as Error).message);
+        }
+
+    } catch (error) {
+        console.error(`Failed to fetch Morpho metrics for ${vault.id}:`, (error as Error).message);
+    }
+
+    return { apy, tvl };
+}
+
 async function fetchVaultMetrics(vault: VaultReference) {
     switch (vault.protocol) {
         case 'compound':
@@ -197,6 +292,8 @@ async function fetchVaultMetrics(vault: VaultReference) {
             return fetchPendleMetrics(vault);
         case 'aave':
             return fetchAaveMetrics(vault);
+        case 'morpho':
+            return fetchMorphoMetrics(vault);
         default:
             return { apy: null, tvl: null };
     }

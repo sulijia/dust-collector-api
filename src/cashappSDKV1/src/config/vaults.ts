@@ -27,7 +27,7 @@ export interface VaultReference {
     /** Unique identifier for this vault within CashApp */
     id: string;
     /** Underlying protocol config to reference */
-    protocol: 'compound' | 'aave' | 'pendle';
+    protocol: 'compound' | 'aave' | 'pendle' | 'morpho';
     /** Chain key used in the protocol configuration (e.g. `base`, `ethereum`) */
     chain: string;
     /** Market identifier (e.g. `usdc`, `usde-base-20251211`) */
@@ -62,6 +62,24 @@ export const VAULTS: VaultCatalogue = {
             market: 'usdc',
             note: 'USDC Aave market on Base',
             icon: resolveIcon('aave.png')
+        },
+        {
+            id: 'Morpho-Steakhouse-USDC-Base',
+            riskLevel: 'low',
+            protocol: 'morpho',
+            chain: 'base',
+            market: 'steakhouse-usdc',
+            note: 'Steakhouse USDC Vault on Base',
+            icon: resolveIcon('morpho.png')
+        },
+        {
+            id: 'Morpho-Gauntlet-USDC-Core-Base',
+            riskLevel: 'low',
+            protocol: 'morpho',
+            chain: 'base',
+            market: 'gauntlet-usdc-core',
+            note: 'Gauntlet USDC Core Vault on Base',
+            icon: resolveIcon('morpho.png')
         }
     ],
     time: [
