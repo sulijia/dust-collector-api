@@ -321,15 +321,15 @@ export class UnifiedSDK {
             metadata: {}
         };
 
-        // try {
-        //     wallet = await this._getWalletPortfolioBalances({
-        //         chainId: resolvedChainId,
-        //         account,
-        //         includeItems
-        //     });
-        // } catch (error) {
-        //     failures.push({ protocol: 'wallet', error: error?.message || error });
-        // }
+        try {
+            wallet = await this._getWalletPortfolioBalances({
+                chainId: resolvedChainId,
+                account,
+                includeItems
+            });
+        } catch (error) {
+            failures.push({ protocol: 'wallet', error: error?.message || error });
+        }
 
         const walletUsd = wallet?.totals?.usd || 0;
         const grandTotal = depositsUsd + walletUsd;
